@@ -1,6 +1,8 @@
 import asyncio
 import logging
 import os
+from threading import Thread
+from flask import Flask
 from aiogram import Bot, Dispatcher, types, F
 from aiogram.filters import CommandStart, Command
 from aiogram.types import InlineKeyboardMarkup, InlineKeyboardButton
@@ -14,18 +16,26 @@ if not TOKEN:
     print("❌ ОШИБКА: Укажи BOT_TOKEN в файле .env!")
     exit()
 
+# --- FLASK ЗАГЛУШКА ДЛЯ RENDER ---
+app = Flask(__name__)
+
+@app.route('/')
+def home():
+    return "✅ Felix Kane Bot is running"
+
+def run_flask():
+    port = int(os.environ.get("PORT", 8080))
+    app.run(host='0.0.0.0', port=port)
+
 # --- АДМИН ---
-ADMIN_USERNAME = "nukakbaladno"  # без @
+ADMIN_USERNAME = "nukakbaladno"
 
 logging.basicConfig(level=logging.INFO)
 bot = Bot(token=TOKEN)
 dp = Dispatcher()
 
-# --- ПРОВЕРКА АДМИНА ---
 def is_admin(user: types.User) -> bool:
     return user.username == ADMIN_USERNAME
-
-# --- КЛАВИАТУРЫ ---
 
 def main_menu_kb():
     keyboard = [
@@ -57,62 +67,44 @@ def admin_kb():
     ]
     return InlineKeyboardMarkup(inline_keyboard=keyboard)
 
-# --- СЧЁТЧИК ПОЛЬЗОВАТЕЛЕЙ (простой, в памяти) ---
 unique_users = set()
-
-# --- ХЭНДЛЕРЫ ---
 
 @dp.message(CommandStart())
 async def cmd_start(message: types.Message):
     unique_users.add(message.from_user.id)
-
     greeting = (
         f"Привет, {message.from_user.first_name} 👋\n\n"
         "Я <b>Felix Kane</b> — разрабатываю Telegram-ботов, "
         "веб-сервисы и интегрирую AI в проекты.\n\n"
         "Здесь можешь посмотреть мои работы и связаться для заказа."
     )
-
-    # Если это админ — показываем особое приветствие
     if is_admin(message.from_user):
         greeting += "\n\n<i>👑 Ты вошёл как администратор. /admin для управления.</i>"
-
     await message.answer(greeting, parse_mode="HTML", reply_markup=main_menu_kb())
-
 
 @dp.message(Command("admin"))
 async def cmd_admin(message: types.Message):
     if not is_admin(message.from_user):
         await message.answer("⛔️ У тебя нет доступа к этой команде.")
         return
-
-    await message.answer(
-        "👑 <b>Панель администратора</b>\n\nЧто хочешь сделать?",
-        parse_mode="HTML",
-        reply_markup=admin_kb()
-    )
-
+    await message.answer("👑 <b>Панель администратора</b>\n\nЧто хочешь сделать?", parse_mode="HTML", reply_markup=admin_kb())
 
 @dp.callback_query()
 async def callbacks_handler(callback: types.CallbackQuery):
     action = callback.data
     user = callback.from_user
 
-    # --- Обо мне ---
     if action == "about_me":
         text = (
             "👤 <b>Felix Kane</b>\n\n"
             "Разрабатываю Telegram-ботов, веб-сервисы и AI-инструменты на Python.\n\n"
             "Работаю с современными языковыми моделями — Claude, Gemini, OpenRouter. "
-            "Умею встроить AI в реальный проект под конкретную задачу, "
-            "а не просто подключить ChatGPT.\n\n"
-            "Есть запущенные проекты в портфолио. "
-            "Берусь за задачи разной сложности, работаю честно — "
+            "Умею встроить AI в реальный проект под конкретную задачу.\n\n"
+            "Есть запущенные проекты в портфолио. Работаю честно — "
             "если задача не по силам, скажу сразу."
         )
         await callback.message.edit_text(text, parse_mode="HTML", reply_markup=back_kb())
 
-    # --- Навыки ---
     elif action == "skills":
         text = (
             "🛠 <b>Навыки:</b>\n\n"
@@ -126,15 +118,9 @@ async def callbacks_handler(callback: types.CallbackQuery):
         )
         await callback.message.edit_text(text, parse_mode="HTML", reply_markup=back_kb())
 
-    # --- Проекты ---
     elif action == "projects":
-        await callback.message.edit_text(
-            "🚀 <b>Мои проекты:</b>\n\nВыбери проект чтобы узнать подробнее:",
-            parse_mode="HTML",
-            reply_markup=projects_kb()
-        )
+        await callback.message.edit_text("🚀 <b>Мои проекты:</b>\n\nВыбери проект чтобы узнать подробнее:", parse_mode="HTML", reply_markup=projects_kb())
 
-    # --- CS2 Vizer ---
     elif action == "proj_cs2":
         text = (
             "📊 <b>CS2 Vizer</b>\n\n"
@@ -148,7 +134,6 @@ async def callbacks_handler(callback: types.CallbackQuery):
         )
         await callback.message.edit_text(text, parse_mode="HTML", reply_markup=back_kb())
 
-    # --- Бот-портфолио ---
     elif action == "proj_portfolio_bot":
         text = (
             "🤖 <b>Бот-портфолио</b>\n\n"
@@ -161,15 +146,11 @@ async def callbacks_handler(callback: types.CallbackQuery):
         )
         await callback.message.edit_text(text, parse_mode="HTML", reply_markup=back_kb())
 
-    # --- Админ панель ---
     elif action == "admin_stats":
         if not is_admin(user):
             await callback.answer("⛔️ Нет доступа", show_alert=True)
             return
-        text = (
-            f"📊 <b>Статистика</b>\n\n"
-            f"👥 Уникальных пользователей: {len(unique_users)}"
-        )
+        text = f"📊 <b>Статистика</b>\n\n👥 Уникальных пользователей: {len(unique_users)}"
         await callback.message.edit_text(text, parse_mode="HTML", reply_markup=admin_kb())
 
     elif action in ("admin_edit_about", "admin_add_project"):
@@ -178,7 +159,6 @@ async def callbacks_handler(callback: types.CallbackQuery):
             return
         await callback.answer("🔧 Функция в разработке", show_alert=True)
 
-    # --- Назад ---
     elif action == "back_to_main":
         text = (
             "Я <b>Felix Kane</b> — разрабатываю Telegram-ботов, "
@@ -189,11 +169,11 @@ async def callbacks_handler(callback: types.CallbackQuery):
 
     await callback.answer()
 
-
-async def main():
+async def start_bot():
     print("🚀 Бот-портфолио Felix Kane запущен!")
     await bot.delete_webhook(drop_pending_updates=True)
     await dp.start_polling(bot)
 
 if __name__ == "__main__":
-    asyncio.run(main())
+    Thread(target=run_flask, daemon=True).start()
+    asyncio.run(start_bot())
